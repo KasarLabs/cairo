@@ -407,13 +407,14 @@ dependencies = [
 [[package]]
 name = "cairo-felt"
 version = "0.9.1"
-source = "git+https://github.com/bidzyyys/cairo-vm.git?branch=feature/scale-codec#a61536e575dffea08c9859b8a1db011ed928cab3"
+source = "git+https://github.com/kasarlabs/cairo-vm.git?branch=feature/scale-codec#287e2d4548332ae861c073d3ee013c9e78762c10"
 dependencies = [
  "lazy_static",
  "num-bigint",
  "num-integer",
  "num-traits 0.2.17",
  "parity-scale-codec",
+ "scale-info",
  "serde",
 ]
 
@@ -1084,7 +1085,7 @@ dependencies = [
 [[package]]
 name = "cairo-vm"
 version = "0.9.1"
-source = "git+https://github.com/bidzyyys/cairo-vm.git?branch=feature/scale-codec#a61536e575dffea08c9859b8a1db011ed928cab3"
+source = "git+https://github.com/kasarlabs/cairo-vm.git?branch=feature/scale-codec#287e2d4548332ae861c073d3ee013c9e78762c10"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1103,6 +1104,7 @@ dependencies = [
  "num-traits 0.2.17",
  "parity-scale-codec",
  "rand",
+ "scale-info",
  "serde",
  "serde_json",
  "sha2",
@@ -2733,6 +2735,7 @@ version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ef2175c2907e7c8bc0a9c3f86aeb5ec1f3b275300ad58a44d0c3ae379a5e52e"
 dependencies = [
+ "bitvec",
  "cfg-if",
  "derive_more",
  "parity-scale-codec",
