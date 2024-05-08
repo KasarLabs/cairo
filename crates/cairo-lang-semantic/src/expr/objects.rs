@@ -1,5 +1,5 @@
 use cairo_lang_debug::DebugWithDb;
-use cairo_lang_defs::ids::{ConstantId, MemberId, VarId};
+use cairo_lang_defs::ids::{ConstantId, MemberId, NamedLanguageElementId, VarId};
 use cairo_lang_diagnostics::DiagnosticAdded;
 use cairo_lang_proc_macros::{DebugWithDb, SemanticObject};
 use cairo_lang_syntax::node::ast;
@@ -134,6 +134,7 @@ pub enum Expr {
     EnumVariantCtor(ExprEnumVariantCtor),
     PropagateError(ExprPropagateError),
     Constant(ExprConstant),
+    FixedSizeArray(ExprFixedSizeArray),
     Missing(ExprMissing),
 }
 impl Expr {
@@ -159,6 +160,7 @@ impl Expr {
             Expr::PropagateError(expr) => expr.ok_variant.ty,
             Expr::Constant(expr) => expr.ty,
             Expr::Missing(expr) => expr.ty,
+            Expr::FixedSizeArray(expr) => expr.ty,
         }
     }
     pub fn stable_ptr(&self) -> ast::ExprPtr {
@@ -183,6 +185,7 @@ impl Expr {
             Expr::PropagateError(expr) => expr.stable_ptr,
             Expr::Constant(expr) => expr.stable_ptr,
             Expr::Missing(expr) => expr.stable_ptr,
+            Expr::FixedSizeArray(expr) => expr.stable_ptr,
         }
     }
 
@@ -198,6 +201,16 @@ impl Expr {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, DebugWithDb, SemanticObject)]
 #[debug_db(ExprFormatter<'a>)]
 pub struct ExprTuple {
+    pub items: Vec<ExprId>,
+    pub ty: semantic::TypeId,
+    #[hide_field_debug_with_db]
+    #[dont_rewrite]
+    pub stable_ptr: ast::ExprPtr,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, DebugWithDb, SemanticObject)]
+#[debug_db(ExprFormatter<'a>)]
+pub struct ExprFixedSizeArray {
     pub items: Vec<ExprId>,
     pub ty: semantic::TypeId,
     #[hide_field_debug_with_db]
@@ -253,7 +266,7 @@ pub struct ExprLoop {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, DebugWithDb, SemanticObject)]
 #[debug_db(ExprFormatter<'a>)]
 pub struct ExprWhile {
-    pub condition: ExprId,
+    pub condition: Condition,
     pub body: ExprId,
     pub ty: semantic::TypeId,
     #[hide_field_debug_with_db]

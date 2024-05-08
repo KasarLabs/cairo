@@ -117,7 +117,7 @@ pub fn generate_block_code(
     let last_location = statements.iter().rev().find_map(|statement| statement.location);
 
     match &block.end {
-        lowering::FlatBlockEnd::Return(returned_variables) => {
+        lowering::FlatBlockEnd::Return(returned_variables, _location) => {
             statements.extend(generate_return_code(
                 context,
                 returned_variables,
@@ -283,8 +283,8 @@ pub fn generate_statement_code(
     statement_location: &StatementLocation,
 ) -> Maybe<Vec<pre_sierra::StatementWithLocation>> {
     match statement {
-        lowering::Statement::Literal(statement_literal) => {
-            generate_statement_literal_code(context, statement_literal)
+        lowering::Statement::Const(statement_literal) => {
+            generate_statement_const_code(context, statement_literal)
         }
         lowering::Statement::Call(statement_call) => {
             generate_statement_call_code(context, statement_call, statement_location)
@@ -307,17 +307,17 @@ pub fn generate_statement_code(
     }
 }
 
-/// Generates Sierra code for [lowering::StatementLiteral].
-fn generate_statement_literal_code(
+/// Generates Sierra code for [lowering::StatementConst].
+fn generate_statement_const_code(
     context: &mut ExprGeneratorContext<'_>,
-    statement: &lowering::StatementLiteral,
+    statement: &lowering::StatementConst,
 ) -> Maybe<Vec<pre_sierra::StatementWithLocation>> {
     let output_var = context.get_sierra_variable(statement.output);
     Ok(vec![simple_statement(
         const_libfunc_id_by_type(
             context.get_db(),
             context.get_var_type(statement.output),
-            statement.value.clone(),
+            &statement.value,
         ),
         &[],
         &[output_var],
@@ -331,11 +331,8 @@ fn generate_statement_call_code(
     statement_location: &StatementLocation,
 ) -> Maybe<Vec<pre_sierra::StatementWithLocation>> {
     // Check if this is a user defined function or a libfunc.
-    let (body, libfunc_id) = get_concrete_libfunc_id(
-        context.get_db(),
-        statement.function,
-        statement.coupon_input.is_some(),
-    );
+    let (body, libfunc_id) =
+        get_concrete_libfunc_id(context.get_db(), statement.function, statement.with_coupon);
     // Checks if the call invalidates ap tracking.
     let libfunc_signature = get_libfunc_signature(context.get_db(), libfunc_id.clone());
     let [branch_signature] = &libfunc_signature.branch_signatures[..] else {
@@ -353,7 +350,7 @@ fn generate_statement_call_code(
         let mut args_on_stack: Vec<sierra::ids::VarId> = vec![];
         let mut push_values_vec: Vec<pre_sierra::PushValue> = vec![];
 
-        for (idx, var_usage) in statement.all_inputs().iter().enumerate() {
+        for (idx, var_usage) in statement.inputs.iter().enumerate() {
             let use_location = UseLocation { statement_location: *statement_location, idx };
             let should_dup = should_dup(context, &use_location);
             let var = context.get_sierra_variable(var_usage.var_id);
@@ -379,10 +376,7 @@ fn generate_statement_call_code(
             ),
         ])
     } else {
-        assert!(
-            statement.coupon_input.is_none(),
-            "Extern functions cannot have a __coupon__ argument."
-        );
+        assert!(!statement.with_coupon, "Extern functions cannot have a __coupon__ argument.");
 
         // Dup variables as needed.
         let mut statements: Vec<pre_sierra::StatementWithLocation> = vec![];
@@ -710,8 +704,8 @@ fn generate_statement_snapshot(
         func,
         &[input],
         &[
-            context.get_sierra_variable(statement.output_original),
-            context.get_sierra_variable(statement.output_snapshot),
+            context.get_sierra_variable(statement.original()),
+            context.get_sierra_variable(statement.snapshot()),
         ],
     ));
     Ok(statements)

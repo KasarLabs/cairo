@@ -132,6 +132,11 @@ impl BlockUsages {
                     self.handle_expr(function_body, *expr_id, current);
                 }
             }
+            Expr::FixedSizeArray(expr) => {
+                for expr_id in &expr.items {
+                    self.handle_expr(function_body, *expr_id, current);
+                }
+            }
             Expr::Snapshot(expr) => self.handle_expr(function_body, expr.inner, current),
             Expr::Desnap(expr) => self.handle_expr(function_body, expr.inner, current),
             Expr::Assignment(expr) => {
@@ -181,7 +186,17 @@ impl BlockUsages {
             }
             Expr::While(expr) => {
                 let mut usage = Default::default();
-                self.handle_expr(function_body, expr.condition, &mut usage);
+                match &expr.condition {
+                    semantic::Condition::BoolExpr(expr) => {
+                        self.handle_expr(function_body, *expr, &mut usage);
+                    }
+                    semantic::Condition::Let(expr, pattterns) => {
+                        self.handle_expr(function_body, *expr, &mut usage);
+                        for pattern in pattterns {
+                            Self::handle_pattern(&function_body.patterns, *pattern, &mut usage);
+                        }
+                    }
+                }
                 self.handle_expr(function_body, expr.body, &mut usage);
                 usage.finalize_as_scope();
                 current.add_usage_and_changes(&usage);
@@ -211,11 +226,16 @@ impl BlockUsages {
                 }
             }
             Expr::If(expr) => {
-                match expr.condition {
+                match &expr.condition {
                     semantic::Condition::BoolExpr(expr) => {
-                        self.handle_expr(function_body, expr, current);
+                        self.handle_expr(function_body, *expr, current);
                     }
-                    semantic::Condition::Let(_, _) => {}
+                    semantic::Condition::Let(expr, patterns) => {
+                        self.handle_expr(function_body, *expr, current);
+                        for pattern in patterns {
+                            Self::handle_pattern(&function_body.patterns, *pattern, current);
+                        }
+                    }
                 }
 
                 self.handle_expr(function_body, expr.if_block, current);
@@ -264,6 +284,11 @@ impl BlockUsages {
             }
             Pattern::Tuple(pattern) => {
                 for pattern in &pattern.field_patterns {
+                    Self::handle_pattern(arena, *pattern, current);
+                }
+            }
+            Pattern::FixedSizeArray(pattern) => {
+                for pattern in &pattern.elements_patterns {
                     Self::handle_pattern(arena, *pattern, current);
                 }
             }

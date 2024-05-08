@@ -33,6 +33,7 @@ use cairo_lang_utils::{extract_matches, try_extract_matches, OptionHelper};
 use id_arena::Arena;
 use itertools::{chain, zip_eq};
 use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use smol_str::SmolStr;
 
 use super::inference::canonic::ResultNoErrEx;
@@ -41,12 +42,12 @@ use super::inference::infers::InferenceEmbeddings;
 use super::inference::{Inference, InferenceError};
 use super::objects::*;
 use super::pattern::{
-    Pattern, PatternEnumVariant, PatternLiteral, PatternMissing, PatternOtherwise, PatternTuple,
-    PatternVariable,
+    Pattern, PatternEnumVariant, PatternFixedSizeArray, PatternLiteral, PatternMissing,
+    PatternOtherwise, PatternTuple, PatternVariable,
 };
 use crate::corelib::{
     core_binary_operator, core_bool_ty, core_unary_operator, false_literal_expr, get_core_trait,
-    never_ty, true_literal_expr, try_get_core_ty_by_name, unit_expr, unit_ty,
+    get_usize_ty, never_ty, true_literal_expr, try_get_core_ty_by_name, unit_expr, unit_ty,
     unwrap_error_propagation_type,
 };
 use crate::db::SemanticGroup;
@@ -55,6 +56,7 @@ use crate::diagnostic::{
     ElementKind, NotFoundItemType, SemanticDiagnostics, TraitInferenceErrors,
     UnsupportedOutsideOfFunctionFeatureName,
 };
+use crate::items::constant::{value_as_const_value, ConstValue};
 use crate::items::enm::SemanticEnumEx;
 use crate::items::imp::{filter_candidate_traits, infer_impl_by_self};
 use crate::items::modifiers::compute_mutability;
@@ -65,7 +67,8 @@ use crate::resolve::{ResolvedConcreteItem, ResolvedGenericItem, Resolver};
 use crate::semantic::{self, FunctionId, LocalVariable, TypeId, TypeLongId, Variable};
 use crate::substitution::SemanticRewriter;
 use crate::types::{
-    are_coupons_enabled, peel_snapshots, resolve_type, wrap_in_snapshots, ConcreteTypeId,
+    are_coupons_enabled, extract_fixed_size_array_size, peel_snapshots, resolve_type,
+    verify_fixed_size_array_size, wrap_in_snapshots, ConcreteTypeId,
 };
 use crate::{
     ConcreteEnumId, GenericArgumentId, Member, Mutability, Parameter, PatternStringLiteral,
@@ -240,7 +243,7 @@ impl Environment {
         }
     }
 
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             parent: None,
             variables: Default::default(),
@@ -383,6 +386,7 @@ pub fn maybe_compute_expr_semantic(
             Err(ctx.diagnostics.report(syntax, Unsupported))
         }
         ast::Expr::Indexed(expr) => compute_expr_indexed_semantic(ctx, expr),
+        ast::Expr::FixedSizeArray(expr) => compute_expr_fixed_size_array_semantic(ctx, expr),
     }
 }
 
@@ -663,6 +667,63 @@ fn compute_expr_tuple_semantic(
     }))
 }
 
+/// Computes the semantic model of an expression of type [ast::ExprFixedSizeArray].
+fn compute_expr_fixed_size_array_semantic(
+    ctx: &mut ComputationContext<'_>,
+    syntax: &ast::ExprFixedSizeArray,
+) -> Maybe<Expr> {
+    let db = ctx.db;
+    let syntax_db = db.upcast();
+    let exprs = syntax.exprs(syntax_db).elements(syntax_db);
+    let (first_expr, tail_exprs) = exprs
+        .split_first()
+        .ok_or_else(|| ctx.diagnostics.report(syntax, FixedSizeArrayEmptyElements))?;
+    let first_expr_semantic = compute_expr_semantic(ctx, first_expr);
+
+    let mut items: Vec<ExprId> = vec![];
+
+    if let Some(size) = extract_fixed_size_array_size(db, ctx.diagnostics, syntax, &ctx.resolver)? {
+        // Fixed size array with a defined size must have exactly one element.
+        if !tail_exprs.is_empty() {
+            return Err(ctx.diagnostics.report(syntax, FixedSizeArrayNonSingleValue));
+        }
+        let size = extract_matches!(db.lookup_intern_const_value(size), ConstValue::Int)
+            .to_usize()
+            .unwrap();
+        for _ in 0..size {
+            items.push(first_expr_semantic.id);
+        }
+    } else {
+        items.push(first_expr_semantic.id);
+        // The type of the first expression is the type of the array. All other expressions must
+        // have the same type.
+        let first_expr_ty = ctx.reduce_ty(first_expr_semantic.ty());
+        for expr_syntax in tail_exprs {
+            let expr_semantic = compute_expr_semantic(ctx, expr_syntax);
+            let expr_ty = ctx.reduce_ty(expr_semantic.ty());
+            if ctx.resolver.inference().conform_ty(expr_ty, first_expr_ty).is_err() {
+                let expected_ty = ctx.reduce_ty(first_expr_semantic.ty());
+                return Err(ctx
+                    .diagnostics
+                    .report(expr_syntax, WrongArgumentType { expected_ty, actual_ty: expr_ty }));
+            }
+            items.push(expr_semantic.id);
+        }
+    }
+    let size = items.len();
+    verify_fixed_size_array_size(ctx.diagnostics, &size.into(), syntax)?;
+    let size_const_value_id =
+        db.intern_const_value(value_as_const_value(db, get_usize_ty(db), &size.into()).unwrap());
+    Ok(Expr::FixedSizeArray(ExprFixedSizeArray {
+        items,
+        ty: db.intern_type(TypeLongId::FixedSizeArray {
+            type_id: ctx.reduce_ty(first_expr_semantic.ty()),
+            size: size_const_value_id,
+        }),
+        stable_ptr: syntax.stable_ptr().into(),
+    }))
+}
+
 fn compute_expr_function_call_semantic(
     ctx: &mut ComputationContext<'_>,
     syntax: &ast::ExprFunctionCall,
@@ -885,8 +946,9 @@ impl FlowMergeTypeHelper {
 fn compute_arm_semantic(
     ctx: &mut ComputationContext<'_>,
     expr: &Expr,
-    arm_expr_syntax: &ast::Expr,
+    arm_expr_syntax: ast::Expr,
     patterns_syntax: &PatternListOr,
+    is_loop_arm: bool,
 ) -> (Vec<PatternAndId>, ExprAndId) {
     let db = ctx.db;
     let syntax_db = db.upcast();
@@ -949,7 +1011,16 @@ fn compute_arm_semantic(
                 new_ctx.semantic_defs.insert(var_def.id(), var_def);
             }
         }
-        let arm_expr = compute_expr_semantic(new_ctx, arm_expr_syntax);
+        let arm_expr = if is_loop_arm {
+            let ast::Expr::Block(arm_expr_syntax) = arm_expr_syntax else {
+                unreachable!("Expected a block expression for a loop arm.");
+            };
+            let (id, _) = compute_loop_body_semantic(new_ctx, arm_expr_syntax, LoopContext::While);
+            let expr = new_ctx.exprs[id].clone();
+            ExprAndId { expr, id }
+        } else {
+            compute_expr_semantic(new_ctx, &arm_expr_syntax)
+        };
         (patterns, arm_expr)
     })
 }
@@ -973,8 +1044,9 @@ fn compute_expr_match_semantic(
             compute_arm_semantic(
                 ctx,
                 &expr,
-                &syntax_arm.expression(syntax_db),
+                syntax_arm.expression(syntax_db),
                 &syntax_arm.patterns(syntax_db),
+                false,
             )
         })
         .collect();
@@ -1020,8 +1092,9 @@ fn compute_expr_if_semantic(ctx: &mut ComputationContext<'_>, syntax: &ast::Expr
             let (patterns, if_block) = compute_arm_semantic(
                 ctx,
                 &expr,
-                &ast::Expr::Block(syntax.if_block(syntax_db)),
+                ast::Expr::Block(syntax.if_block(syntax_db)),
                 &condition.patterns(syntax_db),
+                false,
             );
             (Condition::Let(expr.id, patterns.iter().map(|pattern| pattern.id).collect()), if_block)
         }
@@ -1094,9 +1167,33 @@ fn compute_expr_while_semantic(
     let db = ctx.db;
     let syntax_db = db.upcast();
 
-    let condition = compute_bool_condition_semantic(ctx, &syntax.condition(syntax_db)).id;
-    let (body, _loop_ctx) =
-        compute_loop_body_semantic(ctx, syntax.body(syntax_db), LoopContext::While);
+    let (condition, body) = match &syntax.condition(syntax_db) {
+        ast::Condition::Let(condition) => {
+            let expr = compute_expr_semantic(ctx, &condition.expr(syntax_db));
+            if let Expr::LogicalOperator(_) = expr.expr {
+                ctx.diagnostics
+                    .report(&condition.expr(syntax_db), LogicalOperatorNotAllowedInWhileLet);
+            }
+
+            let (patterns, body) = compute_arm_semantic(
+                ctx,
+                &expr,
+                ast::Expr::Block(syntax.body(syntax_db)),
+                &condition.patterns(syntax_db),
+                true,
+            );
+            (Condition::Let(expr.id, patterns.iter().map(|pattern| pattern.id).collect()), body.id)
+        }
+        ast::Condition::Expr(expr) => {
+            let (body, _loop_ctx) =
+                compute_loop_body_semantic(ctx, syntax.body(syntax_db), LoopContext::While);
+            (
+                Condition::BoolExpr(compute_bool_condition_semantic(ctx, &expr.expr(syntax_db)).id),
+                body,
+            )
+        }
+    };
+
     Ok(Expr::While(ExprWhile {
         condition,
         body,
@@ -1547,37 +1644,22 @@ fn maybe_compute_pattern_semantic(
                 stable_ptr: pattern_struct.stable_ptr(),
             })
         }
-        ast::Pattern::Tuple(pattern_tuple) => {
-            // Peel all snapshot wrappers.
-            let (n_snapshots, long_ty) = peel_snapshots(ctx.db, ty);
-
-            let tys = try_extract_matches!(long_ty, TypeLongId::Tuple).ok_or_else(|| {
-                ctx.diagnostics.report(pattern_tuple, UnexpectedTuplePattern { ty })
-            })?;
-
-            let patterns_ast = pattern_tuple.patterns(syntax_db).elements(syntax_db);
-            if tys.len() != patterns_ast.len() {
-                return Err(ctx.diagnostics.report(
-                    pattern_tuple,
-                    WrongNumberOfTupleElements { expected: tys.len(), actual: patterns_ast.len() },
-                ));
-            }
-            // Iterator of Option<Pattern?, for each field.
-            let pattern_options = zip_eq(patterns_ast, tys).map(|(pattern_ast, ty)| {
-                let ty = wrap_in_snapshots(ctx.db, ty, n_snapshots);
-                let pattern =
-                    compute_pattern_semantic(ctx, &pattern_ast, ty, or_pattern_variables_map);
-                Ok(pattern.id)
-            });
-            // If all are Some, collect into a Vec.
-            let field_patterns: Vec<_> = pattern_options.collect::<Maybe<_>>()?;
-
-            Pattern::Tuple(PatternTuple {
-                field_patterns,
-                ty,
-                stable_ptr: pattern_tuple.stable_ptr(),
-            })
-        }
+        ast::Pattern::Tuple(_) => maybe_compute_tuple_like_pattern_semantic(
+            ctx,
+            pattern_syntax,
+            ty,
+            or_pattern_variables_map,
+            |ty: TypeId| UnexpectedTuplePattern { ty },
+            |expected, actual| WrongNumberOfTupleElements { expected, actual },
+        )?,
+        ast::Pattern::FixedSizeArray(_) => maybe_compute_tuple_like_pattern_semantic(
+            ctx,
+            pattern_syntax,
+            ty,
+            or_pattern_variables_map,
+            |ty: TypeId| UnexpectedFixedSizeArrayPattern { ty },
+            |expected, actual| WrongNumberOfFixedSizeArrayElements { expected, actual },
+        )?,
         ast::Pattern::False(pattern_false) => {
             let enum_expr = extract_matches!(
                 false_literal_expr(ctx, pattern_false.stable_ptr().into()),
@@ -1623,6 +1705,70 @@ fn maybe_compute_pattern_semantic(
         .conform_ty(pattern.ty(), ty)
         .map_err(|err| err.report(ctx.diagnostics, stable_ptr))?;
     Ok(pattern)
+}
+
+/// Computes the semantic model of a pattern of a tuple or a fixed size array. Assumes that the
+/// pattern is one of these types.
+fn maybe_compute_tuple_like_pattern_semantic(
+    ctx: &mut ComputationContext<'_>,
+    pattern_syntax: &ast::Pattern,
+    ty: TypeId,
+    or_pattern_variables_map: &mut UnorderedHashMap<SmolStr, LocalVariable>,
+    unexpected_pattern: fn(TypeId) -> SemanticDiagnosticKind,
+    wrong_number_of_elements: fn(usize, usize) -> SemanticDiagnosticKind,
+) -> Maybe<Pattern> {
+    let (n_snapshots, long_ty) = peel_snapshots(ctx.db, ty);
+    // Assert that the pattern is of the same type as the expr.
+    match (pattern_syntax, &long_ty) {
+        (ast::Pattern::Tuple(_), TypeLongId::Tuple(_))
+        | (ast::Pattern::FixedSizeArray(_), TypeLongId::FixedSizeArray { .. }) => {}
+        _ => {
+            return Err(ctx.diagnostics.report(pattern_syntax, unexpected_pattern(ty)));
+        }
+    };
+    let inner_tys = match long_ty {
+        TypeLongId::Tuple(inner_tys) => inner_tys,
+        TypeLongId::FixedSizeArray { type_id: inner_ty, size } => {
+            let size = extract_matches!(ctx.db.lookup_intern_const_value(size), ConstValue::Int)
+                .to_usize()
+                .unwrap();
+            [inner_ty].repeat(size)
+        }
+        _ => unreachable!(),
+    };
+    let patterns_syntax = match pattern_syntax {
+        ast::Pattern::Tuple(pattern_tuple) => {
+            pattern_tuple.patterns(ctx.db.upcast()).elements(ctx.db.upcast())
+        }
+        ast::Pattern::FixedSizeArray(pattern_fixed_size_array) => {
+            pattern_fixed_size_array.patterns(ctx.db.upcast()).elements(ctx.db.upcast())
+        }
+        _ => unreachable!(),
+    };
+    let size = inner_tys.len();
+    if size != patterns_syntax.len() {
+        return Err(ctx
+            .diagnostics
+            .report(pattern_syntax, wrong_number_of_elements(size, patterns_syntax.len())));
+    }
+    let pattern_options = zip_eq(patterns_syntax, inner_tys).map(|(pattern_ast, ty)| {
+        let ty = wrap_in_snapshots(ctx.db, ty, n_snapshots);
+        let pattern = compute_pattern_semantic(ctx, &pattern_ast, ty, or_pattern_variables_map);
+        Ok(pattern.id)
+    });
+    // If all are Some, collect into a Vec.
+    let field_patterns: Vec<_> = pattern_options.collect::<Maybe<_>>()?;
+    Ok(match pattern_syntax {
+        ast::Pattern::Tuple(syntax) => {
+            Pattern::Tuple(PatternTuple { field_patterns, ty, stable_ptr: syntax.stable_ptr() })
+        }
+        ast::Pattern::FixedSizeArray(syntax) => Pattern::FixedSizeArray(PatternFixedSizeArray {
+            elements_patterns: field_patterns,
+            ty,
+            stable_ptr: syntax.stable_ptr(),
+        }),
+        _ => unreachable!(),
+    })
 }
 
 /// Validates that the semantic type of an enum pattern is an enum, and returns the concrete enum.
@@ -1853,6 +1999,13 @@ fn new_literal_expr(
     stable_ptr: ExprPtr,
 ) -> Maybe<ExprLiteral> {
     let ty = if let Some(ty_str) = ty {
+        // Requires specific blocking as `NonZero` now has NumericLiteral support.
+        if ty_str == "NonZero" {
+            return Err(ctx.diagnostics.report_by_ptr(
+                stable_ptr.untyped(),
+                SemanticDiagnosticKind::WrongNumberOfArguments { expected: 1, actual: 0 },
+            ));
+        }
         try_get_core_ty_by_name(ctx.db, ty_str.into(), vec![])
             .map_err(|err| ctx.diagnostics.report_by_ptr(stable_ptr.untyped(), err))?
     } else {
@@ -2120,6 +2273,9 @@ fn member_access_expr(
             Err(ctx.diagnostics.report(&rhs_syntax, TypeHasNoMembers { ty, member_name }))
         }
         TypeLongId::Missing(diag_added) => Err(diag_added),
+        TypeLongId::FixedSizeArray { .. } => {
+            Err(ctx.diagnostics.report(&rhs_syntax, TypeHasNoMembers { ty, member_name }))
+        }
     }
 }
 
@@ -2152,7 +2308,7 @@ fn resolve_expr_path(ctx: &mut ComputationContext<'_>, path: &ast::ExprPath) -> 
     match resolved_item {
         ResolvedConcreteItem::Constant(constant_id) => Ok(Expr::Constant(ExprConstant {
             constant_id,
-            ty: db.constant_semantic_data(constant_id)?.value.ty(),
+            ty: db.constant_semantic_data(constant_id)?.ty(),
             stable_ptr: path.stable_ptr().into(),
         })),
         ResolvedConcreteItem::Variant(variant) if variant.ty == unit_ty(db) => {
@@ -2329,7 +2485,7 @@ fn expr_function_call(
         stable_ptr,
     };
     // Check panicable.
-    if signature.panicable && has_panic_incompatibility(ctx, &expr_function_call)? {
+    if signature.panicable && has_panic_incompatibility(ctx, &expr_function_call) {
         // TODO(spapini): Delay this check until after inference, to allow resolving specific
         //   impls first.
         return Err(ctx.diagnostics.report_by_ptr(stable_ptr.untyped(), PanicableFromNonPanicable));
@@ -2341,20 +2497,18 @@ fn expr_function_call(
 fn has_panic_incompatibility(
     ctx: &mut ComputationContext<'_>,
     expr_function_call: &ExprFunctionCall,
-) -> Maybe<bool> {
+) -> bool {
     // If this is not an actual function call, but actually a minus literal (e.g. -1), then this is
     // the same as nopanic.
     if try_extract_minus_literal(ctx.db, &ctx.exprs, expr_function_call).is_some() {
-        return Ok(false);
+        return false;
     }
-    // If this is not from within a context of a function - e.g. a const item, we will exit with an
-    // error here, as this is a call with bad context.
-    let caller_signature = ctx.get_signature(
-        expr_function_call.stable_ptr.untyped(),
-        UnsupportedOutsideOfFunctionFeatureName::FunctionCall,
-    )?;
-    // If the caller is nopanic, then this is a panic incompatibility.
-    Ok(!caller_signature.panicable)
+    if let Some(signature) = ctx.signature {
+        // If the caller is nopanic, then this is a panic incompatibility.
+        !signature.panicable
+    } else {
+        false
+    }
 }
 
 /// Checks the correctness of the named arguments, and outputs diagnostics on errors.

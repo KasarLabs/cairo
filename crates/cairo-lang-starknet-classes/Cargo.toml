@@ -12,10 +12,10 @@ scale-info = ["dep:scale-info", "cairo-lang-utils/scale-info", "cairo-lang-casm/
 
 [dependencies]
 cairo-felt.workspace = true
-cairo-lang-casm = { path = "../cairo-lang-casm", version = "2.6.0-rc.0", default-features = true, features = ["serde"] }
-cairo-lang-sierra = { path = "../cairo-lang-sierra", version = "2.6.0-rc.0" }
-cairo-lang-sierra-to-casm = { path = "../cairo-lang-sierra-to-casm", version = "2.6.0-rc.0" }
-cairo-lang-utils = { path = "../cairo-lang-utils", version = "2.6.0-rc.0" }
+cairo-lang-casm = { path = "../cairo-lang-casm", version = "~2.6.0", default-features = true, features = ["serde"] }
+cairo-lang-sierra = { path = "../cairo-lang-sierra", version = "~2.6.0" }
+cairo-lang-sierra-to-casm = { path = "../cairo-lang-sierra-to-casm", version = "~2.6.0" }
+cairo-lang-utils = { path = "../cairo-lang-utils", version = "~2.6.0" }
 parity-scale-codec = { workspace = true }
 convert_case.workspace = true
 itertools = { workspace = true, default-features = true }

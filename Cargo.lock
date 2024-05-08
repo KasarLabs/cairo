@@ -395,7 +395,7 @@ checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
 
 [[package]]
 name = "cairo-compile"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-compiler",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-format"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-formatter",
  "cairo-lang-utils",
@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-casm"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-utils",
  "env_logger",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-compiler"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-defs",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-debug"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-proc-macros",
  "cairo-lang-utils",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-defs"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-diagnostics",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-diagnostics"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-filesystem",
@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-eq-solver"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-utils",
  "env_logger",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-filesystem"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-utils",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-formatter"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-diagnostics",
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-language-server"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-compiler",
@@ -579,18 +579,19 @@ dependencies = [
  "cairo-lang-syntax",
  "cairo-lang-test-plugin",
  "cairo-lang-utils",
- "log",
  "salsa",
  "scarb-metadata",
  "serde",
  "serde_json",
  "tokio",
  "tower-lsp",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "cairo-lang-lowering"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-defs",
@@ -619,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-parser"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-diagnostics",
  "cairo-lang-filesystem",
@@ -641,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-plugins"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-defs",
@@ -663,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-proc-macros"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "quote",
@@ -672,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-project"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-filesystem",
  "cairo-lang-utils",
@@ -686,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-runner"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "ark-ff",
  "ark-secp256k1",
@@ -695,6 +696,7 @@ dependencies = [
  "cairo-felt",
  "cairo-lang-casm",
  "cairo-lang-compiler",
+ "cairo-lang-lowering",
  "cairo-lang-semantic",
  "cairo-lang-sierra",
  "cairo-lang-sierra-ap-change",
@@ -721,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-semantic"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-defs",
@@ -750,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "bimap",
@@ -781,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra-ap-change"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-eq-solver",
  "cairo-lang-sierra",
@@ -795,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra-gas"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-eq-solver",
  "cairo-lang-sierra",
@@ -814,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra-generator"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-defs",
@@ -832,7 +834,7 @@ dependencies = [
  "indoc",
  "itertools 0.11.0",
  "log",
- "num-bigint",
+ "num-traits 0.2.17",
  "once_cell",
  "pretty_assertions",
  "salsa",
@@ -843,7 +845,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra-to-casm"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "assert_matches",
  "cairo-felt",
@@ -867,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-sierra-type-size"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-sierra",
  "cairo-lang-utils",
@@ -875,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-starknet"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-felt",
@@ -909,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-starknet-classes"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-felt",
  "cairo-lang-casm",
@@ -941,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-syntax"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-debug",
  "cairo-lang-filesystem",
@@ -958,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-syntax-codegen"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "env_logger",
  "genco",
@@ -968,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-test-plugin"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-felt",
@@ -994,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-test-runner"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-felt",
@@ -1016,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-test-utils"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-utils",
  "colored",
@@ -1028,7 +1030,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-lang-utils"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "env_logger",
  "hashbrown 0.14.3",
@@ -1049,17 +1051,14 @@ dependencies = [
 
 [[package]]
 name = "cairo-language-server"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-language-server",
- "cairo-lang-utils",
- "log",
- "tokio",
 ]
 
 [[package]]
 name = "cairo-run"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-compiler",
@@ -1073,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "cairo-test"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-compiler",
@@ -1595,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "generate-syntax"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "cairo-lang-syntax-codegen",
  "cairo-lang-utils",
@@ -1610,6 +1609,24 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "get-lowering"
+version = "2.6.0"
+dependencies = [
+ "anyhow",
+ "cairo-lang-compiler",
+ "cairo-lang-debug",
+ "cairo-lang-defs",
+ "cairo-lang-filesystem",
+ "cairo-lang-lowering",
+ "cairo-lang-semantic",
+ "cairo-lang-starknet",
+ "cairo-lang-utils",
+ "clap",
+ "convert_case",
+ "itertools 0.11.0",
 ]
 
 [[package]]
@@ -1646,7 +1663,7 @@ dependencies = [
  "aho-corasick",
  "bstr",
  "log",
- "regex-automata",
+ "regex-automata 0.4.3",
  "regex-syntax 0.8.2",
 ]
 
@@ -1763,7 +1780,7 @@ dependencies = [
  "globset",
  "log",
  "memchr",
- "regex-automata",
+ "regex-automata 0.4.3",
  "same-file",
  "walkdir",
  "winapi-util",
@@ -1999,6 +2016,15 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "url",
+]
+
+[[package]]
+name = "matchers"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
+dependencies = [
+ "regex-automata 0.1.10",
 ]
 
 [[package]]
@@ -2573,8 +2599,17 @@ checksum = "380b951a9c5e80ddfd6136919eef32310721aa4aacd4889a8d39124b026ab343"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-automata",
+ "regex-automata 0.4.3",
  "regex-syntax 0.8.2",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
+dependencies = [
+ "regex-syntax 0.6.29",
 ]
 
 [[package]]
@@ -2587,6 +2622,12 @@ dependencies = [
  "memchr",
  "regex-syntax 0.8.2",
 ]
+
+[[package]]
+name = "regex-syntax"
+version = "0.6.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
@@ -2891,8 +2932,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "sierra-compile"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-sierra",
@@ -2971,7 +3021,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-compile"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-compiler",
@@ -3034,7 +3084,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-sierra-compile"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-sierra",
@@ -3047,7 +3097,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-sierra-extract-code"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-starknet-classes",
@@ -3057,7 +3107,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-sierra-upgrade-validate"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "anyhow",
  "cairo-lang-starknet-classes",
@@ -3198,7 +3248,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "2.6.0-rc.0"
+version = "2.6.0"
 dependencies = [
  "assert_matches",
  "cairo-felt",
@@ -3268,6 +3318,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3ad459d94dd517257cc96add8a43190ee620011bb6e6cdc82dafd97dfafafea"
 dependencies = [
  "thiserror-impl-no-std",
+]
+
+[[package]]
+name = "thread_local"
+version = "1.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fdd6f064ccff2d6567adcb3873ca630700f00b5ad3f060c25b5dcfd9a4ce152"
+dependencies = [
+ "cfg-if",
+ "once_cell",
 ]
 
 [[package]]
@@ -3514,6 +3574,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c06d3da6113f116aaee68e4d601191614c9053067f9ab7f6edbcb161237daa54"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad0f048c97dbd9faa9b7df56362b8ebcaa52adb06b498c050d2f4e32f90a7a8b"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -3587,6 +3677,12 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
+
+[[package]]
+name = "valuable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 
 [[package]]
 name = "version_check"

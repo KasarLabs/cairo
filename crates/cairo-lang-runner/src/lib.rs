@@ -174,14 +174,14 @@ pub struct SierraCasmRunner {
     /// Mapping from class_hash to contract info.
     starknet_contracts_info: OrderedHashMap<Felt252, ContractInfo>,
     /// Whether to run the profiler when running using this runner.
-    run_profiler: bool,
+    run_profiler: Option<ProfilingInfoCollectionConfig>,
 }
 impl SierraCasmRunner {
     pub fn new(
         sierra_program: cairo_lang_sierra::program::Program,
         metadata_config: Option<MetadataComputationConfig>,
         starknet_contracts_info: OrderedHashMap<Felt252, ContractInfo>,
-        run_profiler: bool,
+        run_profiler: Option<ProfilingInfoCollectionConfig>,
     ) -> Result<Self, RunnerError> {
         let gas_usage_check = metadata_config.is_some();
         let metadata = create_metadata(&sierra_program, metadata_config)?;
@@ -283,19 +283,19 @@ impl SierraCasmRunner {
             Self::handle_main_return_value(inner_ty, values, &cells)
         };
 
-        let profiling_info = if self.run_profiler {
-            Some(self.collect_profiling_info(vm.get_relocated_trace().unwrap()))
-        } else {
-            None
-        };
+        let profiling_info = self.run_profiler.as_ref().map(|config| {
+            self.collect_profiling_info(vm.get_relocated_trace().unwrap(), config.clone())
+        });
 
         Ok(RunResult { gas_counter, memory: cells, value, profiling_info })
     }
 
     /// Collects profiling info of the current run using the trace.
-    fn collect_profiling_info(&self, trace: &[TraceEntry]) -> ProfilingInfo {
-        let max_stack_trace_depth = get_max_stack_trace_depth();
-
+    fn collect_profiling_info(
+        &self,
+        trace: &[TraceEntry],
+        profiling_config: ProfilingInfoCollectionConfig,
+    ) -> ProfilingInfo {
         let sierra_len = self.casm_program.debug_info.sierra_statement_info.len() - 1;
         let bytecode_len =
             self.casm_program.debug_info.sierra_statement_info.last().unwrap().code_offset;
@@ -330,7 +330,7 @@ impl SierraCasmRunner {
         // Note the header and footer (CASM instructions added for running the program by the
         // runner). The header is not counted, and the footer is, but then the relevant
         // entry is removed.
-        let mut sierra_statements_weights = UnorderedHashMap::default();
+        let mut sierra_statement_weights = UnorderedHashMap::default();
         for step in trace.iter() {
             // Skip the header.
             if step.pc < real_pc_0 {
@@ -353,10 +353,10 @@ impl SierraCasmRunner {
             let sierra_statement_idx = self.sierra_statement_index_by_pc(real_pc);
             let user_function_idx = user_function_idx_by_sierra_statement_idx(
                 &self.sierra_program,
-                &sierra_statement_idx,
+                sierra_statement_idx,
             );
 
-            *sierra_statements_weights.entry(sierra_statement_idx).or_insert(0) += 1;
+            *sierra_statement_weights.entry(sierra_statement_idx).or_insert(0) += 1;
 
             let Some(gen_statement) = self.sierra_program.statements.get(sierra_statement_idx.0)
             else {
@@ -370,7 +370,7 @@ impl SierraCasmRunner {
                         Ok(CoreConcreteLibfunc::FunctionCall(_))
                     ) {
                         // Push to the stack.
-                        if function_stack_depth < max_stack_trace_depth {
+                        if function_stack_depth < profiling_config.max_stack_trace_depth {
                             function_stack.push((user_function_idx, cur_weight));
                             cur_weight = 0;
                         }
@@ -379,7 +379,7 @@ impl SierraCasmRunner {
                 }
                 GenStatement::Return(_) => {
                     // Pop from the stack.
-                    if function_stack_depth <= max_stack_trace_depth {
+                    if function_stack_depth <= profiling_config.max_stack_trace_depth {
                         // The current stack trace, including the current function.
                         let cur_stack: Vec<_> =
                             chain!(function_stack.iter().map(|f| f.0), [user_function_idx])
@@ -399,9 +399,9 @@ impl SierraCasmRunner {
         }
 
         // Remove the footer.
-        sierra_statements_weights.remove(&StatementIdx(sierra_len));
+        sierra_statement_weights.remove(&StatementIdx(sierra_len));
 
-        ProfilingInfo { sierra_statements_weights, stack_trace_weights }
+        ProfilingInfo { sierra_statement_weights, stack_trace_weights }
     }
 
     fn sierra_statement_index_by_pc(&self, pc: usize) -> StatementIdx {
@@ -771,18 +771,37 @@ impl SierraCasmRunner {
     }
 }
 
-// TODO(yuval): consider changing this setting to use flags.
-/// Gets the max_stack_trace_depth according to the environment variable `MAX_STACK_TRACE_DEPTH`, if
-/// set.
-fn get_max_stack_trace_depth() -> usize {
-    if let Ok(max) = std::env::var("MAX_STACK_TRACE_DEPTH") {
-        if max.is_empty() {
-            MAX_STACK_TRACE_DEPTH_DEFAULT
-        } else {
-            max.parse::<usize>().expect("MAX_STACK_TRACE_DEPTH_DEFAULT env var is not numeric")
+/// Configuration for the profiling info collection phase.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct ProfilingInfoCollectionConfig {
+    /// The maximum depth of the stack trace to collect.
+    max_stack_trace_depth: usize,
+}
+
+impl ProfilingInfoCollectionConfig {
+    pub fn set_max_stack_trace_depth(&mut self, max_stack_depth: usize) -> &mut Self {
+        self.max_stack_trace_depth = max_stack_depth;
+        self
+    }
+}
+
+impl Default for ProfilingInfoCollectionConfig {
+    // TODO(yuval): consider changing this setting to use flags.
+    /// Gets the max_stack_trace_depth according to the environment variable
+    /// `MAX_STACK_TRACE_DEPTH`, if set.
+    fn default() -> Self {
+        Self {
+            max_stack_trace_depth: if let Ok(max) = std::env::var("MAX_STACK_TRACE_DEPTH") {
+                if max.is_empty() {
+                    MAX_STACK_TRACE_DEPTH_DEFAULT
+                } else {
+                    max.parse::<usize>()
+                        .expect("MAX_STACK_TRACE_DEPTH_DEFAULT env var is not numeric")
+                }
+            } else {
+                MAX_STACK_TRACE_DEPTH_DEFAULT
+            },
         }
-    } else {
-        MAX_STACK_TRACE_DEPTH_DEFAULT
     }
 }
 

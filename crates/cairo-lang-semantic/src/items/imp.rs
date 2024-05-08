@@ -6,8 +6,8 @@ use cairo_lang_debug::DebugWithDb;
 use cairo_lang_defs::ids::{
     FunctionTitleId, FunctionWithBodyId, GenericKind, GenericParamId, ImplAliasId, ImplDefId,
     ImplFunctionId, ImplFunctionLongId, ImplItemId, ImplTypeId, ImplTypeLongId, LanguageElementId,
-    LookupItemId, ModuleId, ModuleItemId, TopLevelLanguageElementId, TraitFunctionId, TraitId,
-    TraitTypeId,
+    LookupItemId, ModuleId, ModuleItemId, NamedLanguageElementId, NamedLanguageElementLongId,
+    TopLevelLanguageElementId, TraitFunctionId, TraitId, TraitTypeId,
 };
 use cairo_lang_diagnostics::{
     skip_diagnostic, Diagnostics, DiagnosticsBuilder, Maybe, ToMaybe, ToOption,
@@ -34,6 +34,7 @@ use super::functions::{
     forbid_inline_always_with_impl_generic_param, FunctionDeclarationData, InlineConfiguration,
 };
 use super::generics::{semantic_generic_params, GenericArgumentHead, GenericParamsData};
+use super::resolve_trait_path;
 use super::structure::SemanticStructEx;
 use super::trt::{ConcreteTraitGenericFunctionId, ConcreteTraitGenericFunctionLongId};
 use super::type_aliases::{
@@ -206,16 +207,6 @@ pub struct ImplDeclarationData {
     resolver_data: Arc<ResolverData>,
 }
 
-impl ImplDeclarationData {
-    /// Returns Maybe::Err if a cycle is detected here.
-    // TODO(orizi): Remove this function when cycle validation is not required through a type's
-    // field.
-    pub fn check_no_cycle(&self) -> Maybe<()> {
-        self.concrete_trait?;
-        Ok(())
-    }
-}
-
 // --- Selectors ---
 
 /// Query implementation of [crate::db::SemanticGroup::impl_semantic_declaration_diagnostics].
@@ -270,6 +261,16 @@ pub fn impl_def_resolver_data(
     Ok(db.priv_impl_declaration_data(impl_def_id)?.resolver_data)
 }
 
+/// Trivial cycle handler for [crate::db::SemanticGroup::impl_def_resolver_data].
+pub fn impl_def_resolver_data_cycle(
+    db: &dyn SemanticGroup,
+    _cycle: &[String],
+    impl_def_id: &ImplDefId,
+) -> Maybe<Arc<ResolverData>> {
+    // Forwarding (not as a query) cycle handling to `priv_impl_declaration_data` cycle handler.
+    impl_def_resolver_data(db, *impl_def_id)
+}
+
 /// Query implementation of [crate::db::SemanticGroup::impl_def_concrete_trait].
 pub fn impl_def_concrete_trait(
     db: &dyn SemanticGroup,
@@ -278,15 +279,14 @@ pub fn impl_def_concrete_trait(
     db.priv_impl_declaration_data(impl_def_id)?.concrete_trait
 }
 
-/// Cycle handling for [crate::db::SemanticGroup::impl_def_concrete_trait].
+/// Trivial cycle handler for [crate::db::SemanticGroup::impl_def_concrete_trait].
 pub fn impl_def_concrete_trait_cycle(
-    _db: &dyn SemanticGroup,
+    db: &dyn SemanticGroup,
     _cycle: &[String],
-    _impl_def_id: &ImplDefId,
+    impl_def_id: &ImplDefId,
 ) -> Maybe<ConcreteTraitId> {
-    // The diagnostics will be reported from the calling function, specifically from
-    // `priv_impl_declaration_data_inner`.
-    Err(skip_diagnostic())
+    // Forwarding (not as a query) cycle handling to `priv_impl_declaration_data` cycle handler.
+    impl_def_concrete_trait(db, *impl_def_id)
 }
 
 /// Query implementation of [crate::db::SemanticGroup::impl_def_attributes].
@@ -309,15 +309,7 @@ pub fn impl_def_trait(db: &dyn SemanticGroup, impl_def_id: ImplDefId) -> Maybe<T
 
     let trait_path_syntax = impl_ast.trait_path(db.upcast());
 
-    try_extract_matches!(
-        resolver.resolve_generic_path_with_args(
-            &mut diagnostics,
-            &trait_path_syntax,
-            NotFoundItemType::Trait,
-        )?,
-        ResolvedGenericItem::Trait
-    )
-    .ok_or_else(|| diagnostics.report(&trait_path_syntax, NotATrait))
+    resolve_trait_path(&mut diagnostics, &mut resolver, &trait_path_syntax)
 }
 
 /// Query implementation of [crate::db::SemanticGroup::impl_def_concrete_trait].
@@ -428,6 +420,10 @@ pub fn priv_impl_declaration_data_inner(
 #[derive(Clone, Debug, PartialEq, Eq, DebugWithDb)]
 #[debug_db(dyn SemanticGroup + 'static)]
 pub struct ImplDefinitionData {
+    /// The diagnostics here are "flat" - that is, only the diagnostics found on the impl level
+    /// itself, and don't include the diagnostics of its items. The reason it's this way is that
+    /// computing the items' diagnostics require a query about their impl, forming a cycle of
+    /// queries. Adding the items' diagnostics only after the whole computation breaks this cycle.
     diagnostics: Diagnostics<SemanticDiagnostic>,
     function_asts: OrderedHashMap<ImplFunctionId, ast::FunctionWithBody>,
     item_type_asts: Arc<OrderedHashMap<ImplTypeId, ast::ItemTypeAlias>>,
@@ -446,7 +442,8 @@ pub fn impl_semantic_definition_diagnostics(
         return Diagnostics::default();
     };
 
-    // TODO(yuval): move these into priv_impl_definition_data.
+    // The diagnostics from `priv_impl_definition_data` are only the diagnostics from the impl
+    // level. They should be enriched with the items' diagnostics.
     diagnostics.extend(data.diagnostics);
     for impl_function_id in data.function_asts.keys() {
         diagnostics.extend(db.impl_function_declaration_diagnostics(*impl_function_id));
@@ -757,6 +754,7 @@ fn get_inner_types(db: &dyn SemanticGroup, ty: TypeId) -> Maybe<Vec<TypeId>> {
         }
         TypeLongId::Var(_) => panic!("Types should be fully resolved at this point."),
         TypeLongId::Coupon(_) => vec![],
+        TypeLongId::FixedSizeArray { type_id, .. } => vec![type_id],
         TypeLongId::Missing(diag_added) => {
             return Err(diag_added);
         }
@@ -1065,17 +1063,13 @@ pub fn infer_impl_by_self(
     generic_args_syntax: Option<Vec<GenericArg>>,
 ) -> Option<(FunctionId, usize)> {
     let lookup_context = ctx.resolver.impl_lookup_context();
-    let Some((concrete_trait_id, n_snapshots)) =
-        ctx.resolver.inference().infer_concrete_trait_by_self(
-            trait_function_id,
-            self_ty,
-            &lookup_context,
-            Some(stable_ptr),
-            |_| {},
-        )
-    else {
-        return None;
-    };
+    let (concrete_trait_id, n_snapshots) = ctx.resolver.inference().infer_concrete_trait_by_self(
+        trait_function_id,
+        self_ty,
+        &lookup_context,
+        Some(stable_ptr),
+        |_| {},
+    )?;
 
     let concrete_trait_function_id = ctx.db.intern_concrete_trait_function(
         ConcreteTraitGenericFunctionLongId::new(ctx.db, concrete_trait_id, trait_function_id),

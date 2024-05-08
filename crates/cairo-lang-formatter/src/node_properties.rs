@@ -17,7 +17,6 @@ impl SyntaxNodeFormat for SyntaxNode {
             | SyntaxKind::TokenQuestionMark
             | SyntaxKind::TokenRParen
             | SyntaxKind::TokenRBrack
-            | SyntaxKind::TokenLBrack
             | SyntaxKind::TokenSingleLineComment => true,
             SyntaxKind::TokenNot
                 if matches!(
@@ -38,6 +37,14 @@ impl SyntaxNodeFormat for SyntaxNode {
             }
             SyntaxKind::TokenLBrace
                 if matches!(parent_kind(db, self), Some(SyntaxKind::UsePathList)) =>
+            {
+                true
+            }
+            SyntaxKind::TokenLBrack
+                if !matches!(
+                    grandparent_kind(db, self),
+                    Some(SyntaxKind::ExprFixedSizeArray | SyntaxKind::PatternFixedSizeArray)
+                ) =>
             {
                 true
             }
@@ -81,8 +88,11 @@ impl SyntaxNodeFormat for SyntaxNode {
             | SyntaxKind::TokenColonColon
             | SyntaxKind::TokenLParen
             | SyntaxKind::TokenLBrack
-            | SyntaxKind::TokenLBrace
             | SyntaxKind::TokenImplicits => true,
+            SyntaxKind::TokenLBrace => !matches!(
+                grandparent_kind(db, self),
+                Some(SyntaxKind::PatternStruct | SyntaxKind::ExprStructCtorCall)
+            ),
             SyntaxKind::ExprPath | SyntaxKind::TerminalIdentifier
                 if matches!(
                     parent_kind(db, self),
@@ -90,7 +100,6 @@ impl SyntaxNodeFormat for SyntaxNode {
                         SyntaxKind::FunctionWithBody
                             | SyntaxKind::ItemExternFunction
                             | SyntaxKind::ExprFunctionCall
-                            | SyntaxKind::PatternStruct
                             | SyntaxKind::Attribute
                     )
                 ) =>

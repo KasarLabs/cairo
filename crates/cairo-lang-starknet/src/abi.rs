@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use cairo_lang_defs::ids::{
     FunctionWithBodyId, ImplAliasId, ImplDefId, LanguageElementId, ModuleId, ModuleItemId,
-    SubmoduleId, TopLevelLanguageElementId, TraitFunctionId, TraitId,
+    NamedLanguageElementId, SubmoduleId, TopLevelLanguageElementId, TraitFunctionId, TraitId,
 };
 use cairo_lang_diagnostics::{DiagnosticAdded, Maybe};
 use cairo_lang_semantic::corelib::core_submodule;
@@ -640,6 +640,10 @@ impl<'a> AbiBuilder<'a> {
                 Ok(())
             }
             TypeLongId::Snapshot(ty) => self.add_type(ty),
+            TypeLongId::FixedSizeArray { type_id, .. } => {
+                self.add_type(type_id)?;
+                Ok(())
+            }
             TypeLongId::Coupon(_)
             | TypeLongId::GenericParameter(_)
             | TypeLongId::Var(_)

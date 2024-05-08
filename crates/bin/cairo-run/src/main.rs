@@ -9,7 +9,7 @@ use cairo_lang_compiler::project::{check_compiler_path, setup_project};
 use cairo_lang_diagnostics::ToOption;
 use cairo_lang_runner::profiling::ProfilingInfoProcessor;
 use cairo_lang_runner::short_string::as_cairo_short_string;
-use cairo_lang_runner::{SierraCasmRunner, StarknetState};
+use cairo_lang_runner::{ProfilingInfoCollectionConfig, SierraCasmRunner, StarknetState};
 use cairo_lang_sierra_generator::db::SierraGenGroup;
 use cairo_lang_sierra_generator::program_generator::SierraProgramWithDebug;
 use cairo_lang_sierra_generator::replace_ids::{DebugReplacer, SierraIdReplacer};
@@ -17,12 +17,12 @@ use cairo_lang_starknet::contract::get_contracts_info;
 use cairo_lang_utils::arc_unwrap_or_clone;
 use clap::Parser;
 
-/// Command line args parser.
-/// Exits with 0/1 if the input is formatted correctly/incorrectly.
+/// Compiles a Cairo project and runs the function `main`.
+/// Exits with 1 if the compilation or run fails, otherwise 0.
 #[derive(Parser, Debug)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
-    /// The file to compile and run.
+    /// The Cairo project path to compile and run.
     path: PathBuf,
     /// Whether path is a single file.
     #[arg(short, long)]
@@ -47,7 +47,12 @@ fn main() -> anyhow::Result<()> {
     // Check if args.path is a file or a directory.
     check_compiler_path(args.single_file, &args.path)?;
 
-    let db = &mut RootDatabase::builder().detect_corelib().build()?;
+    let mut db_builder = RootDatabase::builder();
+    db_builder.detect_corelib();
+    if args.available_gas.is_none() {
+        db_builder.skip_auto_withdraw_gas();
+    }
+    let db = &mut db_builder.build()?;
 
     let main_crate_ids = setup_project(db, Path::new(&args.path))?;
 
@@ -76,7 +81,7 @@ fn main() -> anyhow::Result<()> {
         sierra_program.clone(),
         if args.available_gas.is_some() { Some(Default::default()) } else { None },
         contracts_info,
-        args.run_profiler,
+        if args.run_profiler { Some(ProfilingInfoCollectionConfig::default()) } else { None },
     )
     .with_context(|| "Failed setting up runner.")?;
     let result = runner
